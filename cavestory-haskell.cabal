@@ -16,6 +16,12 @@ cabal-version:       >=1.8
 
 executable cavestory-haskell
   -- other-modules:
-  build-depends:       base ==4.5.*, sdl2 ==1.0.2
+  build-depends:       base ==4.5.*,
+                       sdl2 ==1.0.2,
+                       lens,
+                       transformers,
+                       mtl,
+                       containers
   ghc-options:         -Wall
-  main-is:             src/Main.hs
+  main-is:             Main.hs
+  hs-source-dirs:      src
