@@ -14,8 +14,7 @@ withInit =
     bracket (SDL.init flags)
             (const SDL.quit)
   where
-    flags = foldr (.|.) 0 flags_list
-    flags_list = [SDL.initFlagTimer, SDL.initFlagVideo]
+    flags = SDL.initFlagTimer .|. SDL.initFlagVideo
 
 withWindow :: String -> (Int, Int) -> (SDL.Window -> IO a) -> IO a
 withWindow title (width, height) =

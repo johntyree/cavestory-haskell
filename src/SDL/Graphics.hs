@@ -69,8 +69,8 @@ draw texture (x, y) src = do
         dst = SDL.Rect (pixel x) (pixel y)
                        (SDL.rectW src)
                        (SDL.rectH src)
-    _ <- liftIO $ with dst $ \dst_ptr ->
-        with src $ \src_ptr ->
+    _ <- liftIO $ with dst $ \dst_ptr -> do
+        with src $ \src_ptr -> do
             SDL.renderCopy rend texture src_ptr dst_ptr
     return ()
 

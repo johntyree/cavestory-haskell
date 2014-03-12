@@ -13,29 +13,42 @@ import Config.Config ( GraphicsQuality(..) )
 type TileType = Word32
 type PixelType = Int
 type GameType = Double
-data Length = Tile TileType   |
-              Pixel PixelType |
-              Game GameType
+data Length = Tile !TileType   |
+              Game !GameType
+  deriving Show
+instance Num Length where
+    (+) = opL (+)
+    (*) = undefined -- Would result in Length^2
+    abs = unaryL abs
+    signum = unaryL signum
+    fromInteger i = Game $ fromInteger i
+
+unaryL :: (GameType -> GameType) -> Length -> Length
+unaryL un l = Game (un $ asGame l)
+
+opL :: (GameType -> GameType -> GameType) -> Length -> Length -> Length
+opL op l1 l2 = Game $ op (asGame l1) (asGame l2)
+
 type Position = (Length, Length)
 type Dimension = (Length, Length)
 
-tileSize :: Length
-tileSize = Game 32.0
+tileSize :: GameType
+tileSize = 32.0
 
 gameScale :: GraphicsQuality -> Double
 gameScale gq = if gq == HighQuality then 1 else 2
 
 asPixel :: GraphicsQuality -> Length -> PixelType
-asPixel gq (Tile t) = fromIntegral $ t * fromIntegral (asPixel gq tileSize)
-asPixel _ (Pixel p) = p
-asPixel gq (Game g) = round $ g / gameScale gq
+asPixel gq v = case v of
+    t@(Tile _) -> gameToPixel (asGame t)
+    (Game g) -> gameToPixel g
+  where
+    gameToPixel game = round $ game / gameScale gq
 
-asGame :: GraphicsQuality -> Length -> GameType
-asGame gq (Pixel p) = fromIntegral p * gameScale gq
-asGame gq (Tile t) = fromIntegral t * asGame gq tileSize
-asGame _ (Game g) = g
+asGame :: Length -> GameType
+asGame (Tile t) = fromIntegral t * tileSize
+asGame (Game g) = g
 
-asTile :: GraphicsQuality -> Length -> TileType
-asTile _ (Tile t) = t
-asTile gq (Game g) = floor $ g / asGame gq tileSize
-asTile gq (Pixel p) = fromIntegral $ p `div` asPixel gq tileSize
+asTile :: Length -> TileType
+asTile (Tile t) = t
+asTile (Game g) = floor $ g / tileSize

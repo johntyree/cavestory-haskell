@@ -6,11 +6,13 @@ module SDL.Input ( keyDownEvent
                  , isKeyHeld
                  , Input
                  , makeInput
+                 , beginNewFrame
                  ) where
 
 import Control.Lens ( makeLenses
                     , (%~)
                     , (^.)
+                    , (.~)
                     , Getting
                     )
 import Data.Maybe ( fromMaybe )
@@ -31,6 +33,9 @@ makeInput = Input Map.empty Map.empty Map.empty
 scancode :: SDL.Event -> SDL.Scancode
 scancode = SDL.keysymScancode . SDL.keyboardEventKeysym
 
+beginNewFrame :: Input -> Input
+beginNewFrame input = released .~ Map.empty $ (pressed .~ Map.empty $ input)
+
 keyDownEvent :: Input -> SDL.Event -> Input
 keyDownEvent input event =
     let insert m = Map.insert (scancode event) True m
@@ -42,7 +47,7 @@ keyUpEvent :: Input -> SDL.Event -> Input
 keyUpEvent input event =
     let insert is_pressed m = Map.insert (scancode event) is_pressed m
         input' = released %~ (insert True) $ input
-        input'' = pressed %~ (insert False) $ input'
+        input'' = held %~ (insert False) $ input'
     in input''
 
 keyLookup :: Getting KeyMap Input KeyMap -> Input -> SDL.Scancode -> Bool
