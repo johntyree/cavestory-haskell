@@ -16,12 +16,12 @@ withInit =
   where
     flags = SDL.initFlagTimer .|. SDL.initFlagVideo
 
-withWindow :: String -> (Int, Int) -> (SDL.Window -> IO a) -> IO a
+withWindow :: String -> (CInt, CInt) -> (SDL.Window -> IO a) -> IO a
 withWindow title (width, height) =
     bracket (withCString title $ \cstring ->
         SDL.createWindow cstring
                          SDL.windowPosUndefined SDL.windowPosUndefined
-                         (fromIntegral width) (fromIntegral height)
+                         width height
                          flags)
             SDL.destroyWindow
   where

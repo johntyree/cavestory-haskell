@@ -12,6 +12,7 @@ module Player ( Player(..)
               ) where
 
 import qualified Accelerators as A
+import Config.Config ( GraphicsQuality )
 import Control.Lens ( makeLenses
                     , (^.)
                     , (.~)
@@ -21,9 +22,13 @@ import Control.Lens ( makeLenses
                     , _1
                     , _2
                     )
+import Control.Lens.At ( at )
 import Control.Monad ( when )
 import Control.Monad.State ( State
                            )
+import qualified Data.Map as Map
+import Data.Maybe ( fromMaybe )
+import qualified Graphics.UI.SDL as SDL
 import SDL.Graphics ( GraphicsState
                     , loadImage
                     , quality
@@ -46,10 +51,20 @@ type PlayerState = State Player
 data AccelDir = AccelLeft | AccelRight | AccelNone
     deriving (Show, Eq)
 
+data HorizontalFacing = HorizLeft | HorizRight
+    deriving (Eq, Enum, Bounded, Ord)
+
+data SpriteState = SpriteState HorizontalFacing
+    deriving (Eq, Ord)
+type SpriteMap = Map.Map SpriteState S.Sprite
+
 data Player = Player { _position :: !Position
                      , _velocity :: !(Velocity, Velocity)
-                     , _sprite :: !S.Sprite
+                     , _sprites :: !SpriteMap
                      , _accelDir:: !AccelDir
+
+                     , _horizFacing :: !HorizontalFacing
+
                      , _jumpActive :: !Bool
                      , _interacting :: !Bool
                      , _onGround :: !Bool
@@ -79,14 +94,30 @@ walkFrictionAccel = A.friction (fromGamePerMSMS walkFriction)
   where
     walkFriction = 0.00049804687
 
+allSpriteStates :: [ SpriteState ]
+allSpriteStates = do
+    hFacing <- [minBound .. maxBound]
+    return $ SpriteState hFacing
+
+spriteMap :: SDL.Texture -> GraphicsQuality -> SpriteMap
+spriteMap tex gq =
+    Map.fromList $ map loadSprite allSpriteStates
+  where
+    loadSprite :: SpriteState -> (SpriteState, S.Sprite)
+    loadSprite state@(SpriteState hFacing) =
+        let dims = (Tile 1, Tile 1)
+            y = if hFacing == HorizLeft
+                then Tile 0
+                else Tile 1
+            x = Tile 0
+        in (state, S.makeSprite gq (x, y) dims tex)
+
 initialize :: Position -> GraphicsState Player
 initialize pos = do
     tex <- loadImage "MyChar"
     gq <- use quality
-    let src_pos = (Tile 0, Tile 0)
-        src_dim = (Tile 1, Tile 1)
-        sprt = S.makeSprite gq src_pos src_dim tex
-    return $ Player pos (zeroVelocity, zeroVelocity) sprt AccelNone False False False
+    let sprtMp = spriteMap tex gq
+    return $ Player pos (zeroVelocity, zeroVelocity) sprtMp AccelNone (HorizLeft) False False False
 
 update :: Time -> PlayerState ()
 update t = do
@@ -119,13 +150,24 @@ update t = do
     position._1 %= (vx |*| t |+|)
 
 draw :: Player -> GraphicsState ()
-draw p = S.draw (p^.sprite) (p^.position)
+draw p = S.draw (spriteLookup p) (p^.position)
+
+spriteLookup :: Player -> S.Sprite
+spriteLookup p = fromMaybe
+    (error "Bad spriteLookup. Check initialization")
+    $ p^.sprites.(at state)
+  where
+    state =
+        let hFacing = p^.horizFacing
+        in  SpriteState hFacing
 
 startMovingLeft :: Player -> Player
-startMovingLeft = accelDir.~AccelLeft
+startMovingLeft = (accelDir.~AccelLeft) .
+                  (horizFacing.~HorizLeft)
 
 startMovingRight :: Player -> Player
-startMovingRight = accelDir.~AccelRight
+startMovingRight = (accelDir.~AccelRight) .
+                   (horizFacing.~HorizRight)
 
 stopMoving :: Player -> Player
 stopMoving = (accelDir.~AccelNone)
@@ -134,8 +176,12 @@ stopJump :: Player -> Player
 stopJump = jumpActive.~False
 
 startJump :: Player -> Player
-startJump p = (jumpActive.~True) .
-              (interacting.~False) .
-              (velocity._2.~(if p^.onGround
-                             then neg jumpSpeed
-                             else p^.velocity._2)) $ p
+startJump = (jumpActive.~True) .
+            (interacting.~False) .
+            setVelocity
+  where
+    setVelocity :: Player -> Player
+    setVelocity p = velocity._2 .~
+        (if p^.onGround
+         then neg jumpSpeed
+         else p^.velocity._2) $ p
