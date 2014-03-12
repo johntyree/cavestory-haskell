@@ -7,6 +7,8 @@ module Player ( Player(..)
               , startMovingLeft
               , startMovingRight
               , stopMoving
+              , startJump
+              , stopJump
               ) where
 
 import qualified Accelerators as A
@@ -14,10 +16,12 @@ import Control.Lens ( makeLenses
                     , (^.)
                     , (.~)
                     , (%=)
-                    , (+=)
+                    , (.=)
                     , use
                     , _1
+                    , _2
                     )
+import Control.Monad ( when )
 import Control.Monad.State ( State
                            )
 import SDL.Graphics ( GraphicsState
@@ -25,24 +29,22 @@ import SDL.Graphics ( GraphicsState
                     , quality
                     )
 import qualified Sprite as S
-import Units.Acceleration ( GamePerMSMS
-                          , fromGamePerMSMS
-                          )
-import Units.Length ( Position
-                    , Length(..)
-                    )
-import Units.Time ( Time )
-import Units.Velocity ( Velocity
-                      , zero
-                      , fromGamePerMS
-                      , GamePerMS
-                      , delta
-                      )
-
+import Units ( Position
+             , Velocity
+             , zeroVelocity
+             , sign
+             , Unit(..)
+             , CompoundUnit(..)
+             , Time
+             , Acceleration
+             , Length(..)
+             , fromGamePerMS
+             , fromGamePerMSMS
+             )
 
 type PlayerState = State Player
 data AccelDir = AccelLeft | AccelRight | AccelNone
-    deriving Eq
+    deriving (Show, Eq)
 
 data Player = Player { _position :: !Position
                      , _velocity :: !(Velocity, Velocity)
@@ -50,20 +52,27 @@ data Player = Player { _position :: !Position
                      , _accelDir:: !AccelDir
                      , _jumpActive :: !Bool
                      , _interacting :: !Bool
+                     , _onGround :: !Bool
                      }
 makeLenses ''Player
 
-walkAccelerationX :: GamePerMSMS
-walkAccelerationX = 0.00083007812
+jumpSpeed :: Velocity
+jumpSpeed = fromGamePerMS 0.25
 
-maxSpeedX :: GamePerMS
-maxSpeedX = 0.15859375
+jumpGravity :: A.Accelerator
+jumpGravity = A.constant (fromGamePerMSMS 0.0003125) (fromGamePerMS 0.2998046875)
+
+walkAccelerationX :: Acceleration
+walkAccelerationX = fromGamePerMSMS 0.00083007812
+
+maxSpeedX :: Velocity
+maxSpeedX = fromGamePerMS 0.15859375
 
 walkLeftAccel :: A.Accelerator
-walkLeftAccel = A.constant (fromGamePerMSMS (-walkAccelerationX)) (fromGamePerMS (-maxSpeedX))
+walkLeftAccel = A.constant (neg walkAccelerationX) (neg maxSpeedX)
 
 walkRightAccel :: A.Accelerator
-walkRightAccel = A.constant (fromGamePerMSMS walkAccelerationX) (fromGamePerMS maxSpeedX)
+walkRightAccel = A.constant walkAccelerationX maxSpeedX
 
 walkFrictionAccel :: A.Accelerator
 walkFrictionAccel = A.friction (fromGamePerMSMS walkFriction)
@@ -77,20 +86,37 @@ initialize pos = do
     let src_pos = (Tile 0, Tile 0)
         src_dim = (Tile 1, Tile 1)
         sprt = S.makeSprite gq src_pos src_dim tex
-    return $ Player pos (zero, zero) sprt AccelNone False False
+    return $ Player pos (zeroVelocity, zeroVelocity) sprt AccelNone False False False
 
 update :: Time -> PlayerState ()
 update t = do
     accDir <- use accelDir
+    jumpAct <- use jumpActive
+    vy <- use $ velocity._2
+    let yAccel
+            | jumpAct && sign vy == (-1) = jumpGravity
+            | otherwise = A.gravity
+
+    velocity._2 %= (flip yAccel t)
+    vy' <- use $ velocity._2
+    position._2 %= (vy' |*| t |+|)
+    py <- use $ position._2
+    when (py >= Game 400) $ do
+        onGround.=True
+        position._2 .= Game 400
+    when (py < Game 400) $
+        onGround.=False
+
+    ground <- use onGround
     let xAccel
             | accDir == AccelLeft = walkLeftAccel
             | accDir == AccelRight = walkRightAccel
-            | otherwise = walkFrictionAccel
-
+            | otherwise = if ground
+                          then walkFrictionAccel
+                          else A.zero
     velocity._1 %= (flip xAccel t)
     vx <- use $ velocity._1
-    let dx = delta vx t
-    position._1 += dx
+    position._1 %= (vx |*| t |+|)
 
 draw :: Player -> GraphicsState ()
 draw p = S.draw (p^.sprite) (p^.position)
@@ -102,7 +128,14 @@ startMovingRight :: Player -> Player
 startMovingRight = accelDir.~AccelRight
 
 stopMoving :: Player -> Player
-stopMoving = (velocity._1.~zero) . (accelDir.~AccelNone)
+stopMoving = (accelDir.~AccelNone)
+
+stopJump :: Player -> Player
+stopJump = jumpActive.~False
 
 startJump :: Player -> Player
-startJump = (jumpActive.~True) . (interacting.~False)
+startJump p = (jumpActive.~True) .
+              (interacting.~False) .
+              (velocity._2.~(if p^.onGround
+                             then neg jumpSpeed
+                             else p^.velocity._2)) $ p

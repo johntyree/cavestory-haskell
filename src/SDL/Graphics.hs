@@ -32,9 +32,9 @@ import Foreign.Marshal.Utils ( with )
 import Foreign.Storable ( peek )
 import Foreign.Ptr ( nullPtr )
 import qualified Graphics.UI.SDL as SDL
-import Units.Length ( Length(..)
-                    , asPixel
-                    )
+import Units ( Length(..)
+             , asPixel
+             )
 
 type GraphicsState = StateT Graphics IO
 type SpriteCache = Map.Map String SDL.Texture

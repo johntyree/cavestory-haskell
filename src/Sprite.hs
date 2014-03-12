@@ -10,11 +10,11 @@ import Control.Lens ( makeLenses
                     )
 import qualified Graphics.UI.SDL as SDL
 import qualified SDL.Graphics as G
-import Units.Length ( Length(..)
-                    , asPixel
-                    , Position
-                    , Dimension
-                    )
+import Units ( Length(..)
+             , asPixel
+             , Position
+             , Dimension
+             )
 
 data Sprite = Sprite { _texture :: SDL.Texture
                      , _source  :: SDL.Rect

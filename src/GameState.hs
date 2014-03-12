@@ -12,7 +12,7 @@ import Control.Monad.Trans.State ( StateT )
 import SDL.Graphics ( Graphics )
 import SDL.Input ( Input )
 import Player ( Player )
-import Units.Time ( Time )
+import Units ( Time )
 
 type GameStateT = StateT GameState IO
 data GameState = GameState { _player :: !Player

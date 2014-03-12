@@ -1,27 +1,35 @@
 module Accelerators ( zero
                     , friction
                     , constant
+                    , gravity
                     , Accelerator
                     ) where
 
-import Units.Time ( Time )
-import qualified Units.Velocity as V
-import Units.Acceleration ( Acceleration
-                          , deltaV
-                          , posA
-                          )
+import Units ( Time
+             , Velocity
+             , zeroVelocity
+             , Acceleration
+             , Unit(..)
+             , CompoundUnit(..)
+             , sign
+             , fromGamePerMSMS
+             , fromGamePerMS
+             )
 
-type Accelerator = V.Velocity -> Time -> V.Velocity
+type Accelerator = Velocity -> Time -> Velocity
 
-zero :: V.Velocity -> Time -> V.Velocity
+zero :: Accelerator
 zero v _ = v
 
-friction :: Acceleration -> V.Velocity -> Time -> V.Velocity
+friction :: Acceleration -> Accelerator
 friction f v t
-    | signum v == 1 = max V.zero $ v - (deltaV f t)
-    | otherwise = min V.zero (v + (deltaV f t))
+    | sign v == 1 = max zeroVelocity $ v |-| f |*| t
+    | otherwise = min zeroVelocity (v |+| f |*| t)
 
-constant :: Acceleration -> V.Velocity -> V.Velocity -> Time -> V.Velocity
+constant :: Acceleration -> Velocity -> Accelerator
 constant a terminalV v t
-    | posA a = min (v + (deltaV a t)) terminalV
-    | otherwise = max (v + (deltaV a t)) terminalV
+    | sign a == 1 = min (v |+| a |*| t) terminalV
+    | otherwise = max (v |+| a |*| t) terminalV
+
+gravity :: Accelerator
+gravity = constant (fromGamePerMSMS 0.00078125) (fromGamePerMS 0.2998046875)

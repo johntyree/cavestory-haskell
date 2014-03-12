@@ -1,7 +1,6 @@
 module Main (main) where
 
 import Config.Config ( GraphicsQuality(..)
-                     , targetFrameTime
                      )
 import Control.Lens ( over
                     , (%=)
@@ -32,6 +31,7 @@ import SDL.Graphics ( Graphics(..)
 import SDL.Input ( Input
                  , makeInput
                  , wasKeyPressed
+                 , wasKeyReleased
                  , isKeyHeld
                  , keyUpEvent
                  , keyDownEvent
@@ -41,13 +41,13 @@ import SDL.SDL ( withInit
                , withWindow
                , withRenderer
                )
-import Units.Length ( Length(..)
-                    , asPixel
-                    )
-import Units.Time ( Time(..)
-                  , asMS
-                  , deltaT
-                  )
+import Units ( Length(..)
+             , Time(..)
+             , Unit(..)
+             , asPixel
+             , asMS
+             , targetFrameTime
+             )
 
 initialize :: Graphics -> IO GS.GameState
 initialize graphics = do
@@ -65,18 +65,18 @@ eventLoop = do
     handleInput
     lastUpdate <- use GS.lastUpdate
     beforeUpdate <- fmap MS $ liftIO SDL.getTicks
-    update (deltaT lastUpdate beforeUpdate)
+    update $ beforeUpdate |-| lastUpdate
     afterUpdate <- fmap MS $ liftIO SDL.getTicks
     GS.lastUpdate .= afterUpdate
     draw
     endFrame <- fmap MS $ liftIO SDL.getTicks
-    liftIO $ delay $ deltaT startFrame endFrame
+    liftIO $ delay $ endFrame |-| startFrame
     when (continue input') eventLoop
   where
     delay :: Time -> IO ()
     delay t
         | t < targetFrameTime =
-            SDL.delay (asMS $ deltaT t targetFrameTime)
+            SDL.delay (asMS $ targetFrameTime |-| t)
         | otherwise = return ()
 
     continue :: Input -> Bool
@@ -103,6 +103,7 @@ eventLoop = do
     handleInput =
         let leftKey = SDL.scancodeLeft
             rightKey = SDL.scancodeRight
+            jumpKey = SDL.scancodeZ
         in do
             i <- use GS.input
             case () of
@@ -112,6 +113,10 @@ eventLoop = do
                 | isKeyHeld i rightKey ->
                     GS.player %= Player.startMovingRight
                 | otherwise -> GS.player %= Player.stopMoving
+            case () of
+             () | wasKeyPressed i jumpKey -> GS.player %= Player.startJump
+                | wasKeyReleased i jumpKey -> GS.player %= Player.stopJump
+                | otherwise -> return ()
 
     update :: Time -> GS.GameStateT ()
     update t = GS.player %= (execState (Player.update t))
@@ -125,10 +130,7 @@ eventLoop = do
                               ]
         in  do
             gs <- get
-            _ <- liftIO $ runStateT clear (gs^.GS.graphics)
-            _ <- liftIO $ runStateT (Player.draw (gs^.GS.player)) (gs^.GS.graphics)
-            _ <- liftIO $ runStateT flipBuffer (gs^.GS.graphics)
-            {-liftIO $ mapM_ (flip runStateT $ gs^.GS.graphics) $ drawCommands gs-}
+            liftIO $ mapM_ (flip runStateT $ gs^.GS.graphics) $ drawCommands gs
             return ()
 
 main :: IO ()
@@ -137,7 +139,7 @@ main =
         gq = HighQuality
         initFunc _ =
             withWindow "Cave Story: Haskell"
-                       (over both (asPixel HighQuality) dims)
+                       (over both (fromIntegral . (asPixel HighQuality)) dims)
                        windowFunc
         windowFunc window = withRenderer window renderFunc
         renderFunc :: SDL.Renderer -> IO ()
