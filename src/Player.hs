@@ -13,6 +13,7 @@ module Player ( Player(..)
               , lookHorizontal
               , lookDown
               ) where
+import qualified Player.WalkingAnimation as WA
 
 import qualified Accelerators as A
 import Config.Config ( GraphicsQuality )
@@ -61,7 +62,7 @@ data VerticalFacing = VerticalNone | VerticalUp | VerticalDown
 data MotionType = Standing | Interacting | Walking | Jumping | Falling
     deriving (Eq, Enum, Bounded, Ord)
 
-data SpriteState = SpriteState HorizontalFacing VerticalFacing MotionType
+data SpriteState = SpriteState HorizontalFacing VerticalFacing MotionType WA.Stride
     deriving (Eq, Ord)
 type SpriteMap = Map.Map SpriteState S.Sprite
 
@@ -72,6 +73,8 @@ data Player = Player { _position :: !Position
 
                      , _horizFacing :: !HorizontalFacing
                      , _intendedVertFacing :: !VerticalFacing
+
+                     , _walkingAnimation :: !WA.WalkingAnimation
 
                      , _jumpActive :: !Bool
                      , _interacting :: !Bool
@@ -116,14 +119,15 @@ allSpriteStates = do
     hFacing <- [minBound .. maxBound]
     vFacing <- [minBound .. maxBound]
     motion <- [minBound .. maxBound]
-    return $ SpriteState hFacing vFacing motion
+    stride <- [minBound .. maxBound]
+    return $ SpriteState hFacing vFacing motion stride
 
 spriteMap :: SDL.Texture -> GraphicsQuality -> SpriteMap
 spriteMap tex gq =
     Map.fromList $ map loadSprite allSpriteStates
   where
     loadSprite :: SpriteState -> (SpriteState, S.Sprite)
-    loadSprite state@(SpriteState hFacing vFacing motion) =
+    loadSprite state@(SpriteState hFacing vFacing motion stride) =
         let dims = (Tile 1, Tile 1)
             y = if hFacing == HorizLeft
                 then Tile 0
@@ -131,7 +135,10 @@ spriteMap tex gq =
             x = if vFacing == VerticalDown
                 then Tile 6
                 else case motion of
-                    Walking -> Tile 0
+                    Walking -> case stride of
+                        WA.StrideMiddle -> Tile 0
+                        WA.StrideLeft -> Tile 1
+                        WA.StrideRight -> Tile 2
                     Standing -> Tile 0
                     Interacting -> Tile 7
                     Jumping -> Tile 1
@@ -154,12 +161,15 @@ initialize pos = do
         AccelNone
         (HorizLeft)
         (VerticalNone)
+        WA.makeWalkingAnimation
         False
         False
         False
 
 update :: Time -> PlayerState ()
 update t = do
+    walkingAnimation %= (WA.update t)
+
     accDir <- use accelDir
     jumpAct <- use jumpActive
     vy <- use $ velocity._2
@@ -210,10 +220,11 @@ spriteLookup p = fromMaybe
                 | p^.onGround = if p^.accelDir == AccelNone
                                 then Standing
                                 else Walking
-                | otherwise = if sign (p^.velocity._1) == 1
+                | otherwise = if sign (p^.velocity._2) == 1
                               then Jumping
                               else Falling
-        in  SpriteState hFacing vFacing motion
+            stride = WA.stride $ p^.walkingAnimation
+        in  SpriteState hFacing vFacing motion stride
 
 startMovingLeft :: Player -> Player
 startMovingLeft = (accelDir.~AccelLeft) .

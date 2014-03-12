@@ -14,15 +14,25 @@ module Units ( Length(..)
              , asPixel
              , asMS
              , targetFrameTime
+             , Frame
+             , FrameRate(..)
+             , asTimePerFrame
              ) where
 
 import Config.Config ( GraphicsQuality(..) )
 import Data.Word ( Word32 )
 
+type Frame = Word32
+data FrameRate = FrameRate !Frame !Time
+    deriving Show
+
+asTimePerFrame :: FrameRate -> Time
+asTimePerFrame (FrameRate f t) = MS $ asMS t `div` f
+
 type GameUnit = Double
 type TileUnit = Int
-data Length = Game GameUnit |
-              Tile TileUnit
+data Length = Game !GameUnit |
+              Tile !TileUnit
     deriving Show
 type Position = (Length, Length)
 type Dimension = Position
@@ -32,10 +42,10 @@ data Time = S TimeUnit |
             MS TimeUnit
     deriving Show
 type GamePerMS = Double
-data Velocity = Velocity Length Time
+data Velocity = Velocity !Length !Time
     deriving Show
 type GamePerMSMS = Double
-data Acceleration = Acceleration Velocity Time
+data Acceleration = Acceleration !Velocity !Time
     deriving Show
 
 infixl 7 |*|
