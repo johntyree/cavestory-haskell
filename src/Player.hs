@@ -9,6 +9,9 @@ module Player ( Player(..)
               , stopMoving
               , startJump
               , stopJump
+              , lookUp
+              , lookHorizontal
+              , lookDown
               ) where
 
 import qualified Accelerators as A
@@ -53,8 +56,12 @@ data AccelDir = AccelLeft | AccelRight | AccelNone
 
 data HorizontalFacing = HorizLeft | HorizRight
     deriving (Eq, Enum, Bounded, Ord)
+data VerticalFacing = VerticalNone | VerticalUp | VerticalDown
+    deriving (Eq, Enum, Bounded, Ord)
+data MotionType = Standing | Interacting | Walking | Jumping | Falling
+    deriving (Eq, Enum, Bounded, Ord)
 
-data SpriteState = SpriteState HorizontalFacing
+data SpriteState = SpriteState HorizontalFacing VerticalFacing MotionType
     deriving (Eq, Ord)
 type SpriteMap = Map.Map SpriteState S.Sprite
 
@@ -64,6 +71,7 @@ data Player = Player { _position :: !Position
                      , _accelDir:: !AccelDir
 
                      , _horizFacing :: !HorizontalFacing
+                     , _intendedVertFacing :: !VerticalFacing
 
                      , _jumpActive :: !Bool
                      , _interacting :: !Bool
@@ -77,11 +85,20 @@ jumpSpeed = fromGamePerMS 0.25
 jumpGravity :: A.Accelerator
 jumpGravity = A.constant (fromGamePerMSMS 0.0003125) (fromGamePerMS 0.2998046875)
 
+airAccelerationX :: Acceleration
+airAccelerationX = fromGamePerMSMS 0.0003125
+
 walkAccelerationX :: Acceleration
 walkAccelerationX = fromGamePerMSMS 0.00083007812
 
 maxSpeedX :: Velocity
 maxSpeedX = fromGamePerMS 0.15859375
+
+airLeftAccel :: A.Accelerator
+airLeftAccel = A.constant (neg airAccelerationX) (neg maxSpeedX)
+
+airRightAccel :: A.Accelerator
+airRightAccel = A.constant airAccelerationX maxSpeedX
 
 walkLeftAccel :: A.Accelerator
 walkLeftAccel = A.constant (neg walkAccelerationX) (neg maxSpeedX)
@@ -97,27 +114,49 @@ walkFrictionAccel = A.friction (fromGamePerMSMS walkFriction)
 allSpriteStates :: [ SpriteState ]
 allSpriteStates = do
     hFacing <- [minBound .. maxBound]
-    return $ SpriteState hFacing
+    vFacing <- [minBound .. maxBound]
+    motion <- [minBound .. maxBound]
+    return $ SpriteState hFacing vFacing motion
 
 spriteMap :: SDL.Texture -> GraphicsQuality -> SpriteMap
 spriteMap tex gq =
     Map.fromList $ map loadSprite allSpriteStates
   where
     loadSprite :: SpriteState -> (SpriteState, S.Sprite)
-    loadSprite state@(SpriteState hFacing) =
+    loadSprite state@(SpriteState hFacing vFacing motion) =
         let dims = (Tile 1, Tile 1)
             y = if hFacing == HorizLeft
                 then Tile 0
                 else Tile 1
-            x = Tile 0
-        in (state, S.makeSprite gq (x, y) dims tex)
+            x = if vFacing == VerticalDown
+                then Tile 6
+                else case motion of
+                    Walking -> Tile 0
+                    Standing -> Tile 0
+                    Interacting -> Tile 7
+                    Jumping -> Tile 1
+                    Falling -> Tile 2
+            xOff = if vFacing == VerticalUp
+                   then Tile 3
+                   else Tile 0
+            x' = xOff |+| x
+        in (state, S.makeSprite gq (x', y) dims tex)
 
 initialize :: Position -> GraphicsState Player
 initialize pos = do
     tex <- loadImage "MyChar"
     gq <- use quality
     let sprtMp = spriteMap tex gq
-    return $ Player pos (zeroVelocity, zeroVelocity) sprtMp AccelNone (HorizLeft) False False False
+    return $ Player
+        pos
+        (zeroVelocity, zeroVelocity)
+        sprtMp
+        AccelNone
+        (HorizLeft)
+        (VerticalNone)
+        False
+        False
+        False
 
 update :: Time -> PlayerState ()
 update t = do
@@ -140,8 +179,12 @@ update t = do
 
     ground <- use onGround
     let xAccel
-            | accDir == AccelLeft = walkLeftAccel
-            | accDir == AccelRight = walkRightAccel
+            | accDir == AccelLeft = if ground
+                                    then walkLeftAccel
+                                    else airLeftAccel
+            | accDir == AccelRight = if ground
+                                     then walkRightAccel
+                                     else airRightAccel
             | otherwise = if ground
                           then walkFrictionAccel
                           else A.zero
@@ -159,7 +202,18 @@ spriteLookup p = fromMaybe
   where
     state =
         let hFacing = p^.horizFacing
-        in  SpriteState hFacing
+            vFacing = if p^.onGround && p^.intendedVertFacing == VerticalDown
+                      then VerticalNone
+                      else p^.intendedVertFacing
+            motion
+                | p^.interacting = Interacting
+                | p^.onGround = if p^.accelDir == AccelNone
+                                then Standing
+                                else Walking
+                | otherwise = if sign (p^.velocity._1) == 1
+                              then Jumping
+                              else Falling
+        in  SpriteState hFacing vFacing motion
 
 startMovingLeft :: Player -> Player
 startMovingLeft = (accelDir.~AccelLeft) .
@@ -171,6 +225,22 @@ startMovingRight = (accelDir.~AccelRight) .
 
 stopMoving :: Player -> Player
 stopMoving = (accelDir.~AccelNone)
+
+lookUp :: Player -> Player
+lookUp = (interacting.~False) .
+         (intendedVertFacing.~VerticalUp)
+
+lookDown :: Player -> Player
+lookDown p =
+    if p^.intendedVertFacing /= VerticalDown
+    then (interacting.~grounded) .
+         (intendedVertFacing.~VerticalDown) $ p
+    else p
+  where
+    grounded = p^.onGround
+
+lookHorizontal :: Player -> Player
+lookHorizontal = intendedVertFacing.~VerticalNone
 
 stopJump :: Player -> Player
 stopJump = jumpActive.~False

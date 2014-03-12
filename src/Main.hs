@@ -103,6 +103,8 @@ eventLoop = do
     handleInput =
         let leftKey = SDL.scancodeLeft
             rightKey = SDL.scancodeRight
+            upKey = SDL.scancodeUp
+            downKey = SDL.scancodeDown
             jumpKey = SDL.scancodeZ
         in do
             i <- use GS.input
@@ -113,6 +115,13 @@ eventLoop = do
                 | isKeyHeld i rightKey ->
                     GS.player %= Player.startMovingRight
                 | otherwise -> GS.player %= Player.stopMoving
+            case () of
+             () | (isKeyHeld i upKey) && (isKeyHeld i downKey) ->
+                    GS.player %= Player.lookHorizontal
+                | isKeyHeld i upKey -> GS.player %= Player.lookUp
+                | isKeyHeld i downKey ->
+                    GS.player %= Player.lookDown
+                | otherwise -> GS.player %= Player.lookHorizontal
             case () of
              () | wasKeyPressed i jumpKey -> GS.player %= Player.startJump
                 | wasKeyReleased i jumpKey -> GS.player %= Player.stopJump
