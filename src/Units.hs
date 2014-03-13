@@ -13,6 +13,7 @@ module Units ( Length(..)
              , CompoundUnit(..)
              , asPixel
              , asMS
+             , asTile
              , targetFrameTime
              , Frame
              , FrameRate(..)
@@ -111,6 +112,10 @@ compImpl f a b = f a `compare` f b
 
 tileSize :: GameUnit
 tileSize = 32.0
+
+asTile :: Length -> TileUnit
+asTile (Game g) = round $ g / tileSize
+asTile (Tile t) = t
 
 asGame :: Length -> GameUnit
 asGame (Game g) = g

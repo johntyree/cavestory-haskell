@@ -22,6 +22,7 @@ import Foreign.Storable ( peek )
 import qualified GameState as GS
 import qualified Graphics.UI.SDL as SDL
 import qualified Player as Player
+import qualified TileMap as TileMap
 import SDL.Graphics ( Graphics(..)
                     , GraphicsState
                     , makeSpriteCache
@@ -51,9 +52,10 @@ import Units ( Length(..)
 
 initialize :: Graphics -> IO GS.GameState
 initialize graphics = do
-    (player, graphics') <- runStateT (Player.initialize (Tile 10, Tile 7)) graphics
+    (player, graphics') <- runStateT (Player.initialize (Tile 10, Tile 2)) graphics
+    (tileMap, graphics'') <- runStateT TileMap.makeTestMap graphics'
     time <- fmap MS SDL.getTicks
-    return $ GS.GameState player makeInput graphics' time
+    return $ GS.GameState player tileMap makeInput graphics'' time
 
 eventLoop :: GS.GameStateT ()
 eventLoop = do
@@ -94,7 +96,8 @@ eventLoop = do
       where
         processEvent :: Input -> SDL.Event -> Input
         processEvent i e
-            | e_type == SDL.eventTypeKeyDown = keyDownEvent i e
+            | e_type == SDL.eventTypeKeyDown &&
+              SDL.keyboardEventRepeat e == 0 = keyDownEvent i e
             | e_type == SDL.eventTypeKeyUp = keyUpEvent i e
             | otherwise = i
           where e_type = SDL.eventType e
@@ -134,6 +137,7 @@ eventLoop = do
     draw =
         let drawCommands :: GS.GameState -> [ GraphicsState () ]
             drawCommands gs = [ clear
+                              , TileMap.draw (gs^.GS.tileMap)
                               , Player.draw (gs^.GS.player)
                               , flipBuffer
                               ]

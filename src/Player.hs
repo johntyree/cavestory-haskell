@@ -228,11 +228,13 @@ spriteLookup p = fromMaybe
 
 startMovingLeft :: Player -> Player
 startMovingLeft = (accelDir.~AccelLeft) .
-                  (horizFacing.~HorizLeft)
+                  (horizFacing.~HorizLeft) .
+                  (interacting.~False)
 
 startMovingRight :: Player -> Player
 startMovingRight = (accelDir.~AccelRight) .
-                   (horizFacing.~HorizRight)
+                   (horizFacing.~HorizRight) .
+                   (interacting.~False)
 
 stopMoving :: Player -> Player
 stopMoving = (accelDir.~AccelNone)

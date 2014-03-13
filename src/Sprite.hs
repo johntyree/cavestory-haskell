@@ -10,8 +10,7 @@ import Control.Lens ( makeLenses
                     )
 import qualified Graphics.UI.SDL as SDL
 import qualified SDL.Graphics as G
-import Units ( Length(..)
-             , asPixel
+import Units ( asPixel
              , Position
              , Dimension
              )
@@ -26,5 +25,5 @@ makeSprite gq (x, y) (w, h) tex =
     let pixel v = fromIntegral $ asPixel gq v
     in Sprite tex (SDL.Rect (pixel x) (pixel y) (pixel w) (pixel h))
 
-draw :: Sprite -> (Length, Length) -> G.GraphicsState ()
+draw :: Sprite -> Position -> G.GraphicsState ()
 draw sprite pos = G.draw (sprite^.texture) pos (sprite^.source)
