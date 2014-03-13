@@ -16,6 +16,7 @@ module Player ( Player(..)
 import qualified Player.WalkingAnimation as WA
 
 import qualified Accelerators as A
+import qualified CollisionRectangle as C
 import Config.Config ( GraphicsQuality )
 import Control.Lens ( makeLenses
                     , (^.)
@@ -31,12 +32,14 @@ import Control.Monad ( when )
 import Control.Monad.State ( State
                            )
 import qualified Data.Map as Map
+import qualified MapCollisions as MC
 import Data.Maybe ( fromMaybe )
 import qualified Graphics.UI.SDL as SDL
 import SDL.Graphics ( GraphicsState
                     , loadImage
                     , quality
                     )
+import qualified Rectangle as R
 import qualified Sprite as S
 import Units ( Position
              , Velocity
@@ -81,6 +84,14 @@ data Player = Player { _position :: !Position
                      , _onGround :: !Bool
                      }
 makeLenses ''Player
+
+collisionRectangle :: C.CompositeCollisionRectangle
+collisionRectangle =
+    C.CompositeCollisionRectangle
+        (R.Rectangle (Game 6, Game 10) (Game 10, Game 12))
+        (R.Rectangle (Game 16, Game 10) (Game 10, Game 12))
+        (R.Rectangle (Game 7, Game 2) (Game 18, Game 15))
+        (R.Rectangle (Game 11, Game 17) (Game 10, Game 15))
 
 jumpSpeed :: Velocity
 jumpSpeed = fromGamePerMS 0.25

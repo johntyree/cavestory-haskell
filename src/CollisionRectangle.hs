@@ -2,6 +2,7 @@
 module CollisionRectangle ( CollisionRectangle(..)
                           , CompositeCollisionRectangle(..)
                           , Side(..)
+                          {-, Orientation(..)-}
                           ) where
 
 import Control.Lens ( makeLenses
@@ -13,6 +14,7 @@ import Units ( Position
              , Length(..)
              )
 
+{-data Orientation = OrientVertical | OrientHorizontal-}
 data Side = LeftSide | RightSide | TopSide | BottomSide
 
 class CollisionRectangle a where
