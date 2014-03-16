@@ -1,0 +1,1 @@
+map <leader>g :!make && make run <CR>

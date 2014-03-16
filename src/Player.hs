@@ -18,6 +18,7 @@ import qualified Player.WalkingAnimation as WA
 import qualified Accelerators as A
 import qualified CollisionRectangle as C
 import Config.Config ( GraphicsQuality )
+import Control.Applicative ( (<*>) )
 import Control.Lens ( makeLenses
                     , (^.)
                     , (.~)
@@ -28,7 +29,6 @@ import Control.Lens ( makeLenses
                     , _2
                     )
 import Control.Lens.At ( at )
-import Control.Monad ( when )
 import Control.Monad.State ( State
                            )
 import qualified Data.Map as Map
@@ -47,7 +47,6 @@ import Units ( Position
              , zeroVelocity
              , sign
              , Unit(..)
-             , CompoundUnit(..)
              , Time
              , Acceleration
              , Length(..)
@@ -110,16 +109,17 @@ instance MC.MapCollidable Player where
 collisionRectangle :: C.CompositeCollisionRectangle
 collisionRectangle =
     C.CompositeCollisionRectangle
-        (R.Rectangle (Game 6, Game 10) (Game 10, Game 12))
+        (R.Rectangle (Game  6, Game 10) (Game 10, Game 12))
         (R.Rectangle (Game 16, Game 10) (Game 10, Game 12))
-        (R.Rectangle (Game 7, Game 2) (Game 18, Game 15))
+        (R.Rectangle (Game  7, Game  2) (Game 18, Game 15))
         (R.Rectangle (Game 11, Game 17) (Game 10, Game 15))
 
 jumpSpeed :: Velocity
 jumpSpeed = fromGamePerMS 0.25
 
 jumpGravity :: A.Accelerator
-jumpGravity = A.constant (fromGamePerMSMS 0.0003125) (fromGamePerMS 0.2998046875)
+jumpGravity = A.constant (fromGamePerMSMS 0.0003125)
+                         (fromGamePerMS 0.2998046875)
 
 airAccelerationX :: Acceleration
 airAccelerationX = fromGamePerMSMS 0.0003125
@@ -147,46 +147,46 @@ walkFrictionAccel = A.friction (fromGamePerMSMS walkFriction)
   where
     walkFriction = 0.00049804687
 
-allSpriteStates :: [ SpriteState ]
+allSpriteStates :: [SpriteState]
 allSpriteStates = do
     hFacing <- [minBound .. maxBound]
     vFacing <- [minBound .. maxBound]
-    motion <- [minBound .. maxBound]
-    stride <- [minBound .. maxBound]
+    motion  <- [minBound .. maxBound]
+    stride  <- [minBound .. maxBound]
     return $ SpriteState hFacing vFacing motion stride
 
 spriteMap :: SDL.Texture -> GraphicsQuality -> SpriteMap
-spriteMap tex gq =
-    Map.fromList $ map loadSprite allSpriteStates
+spriteMap texture graphicsQuality =
+    Map.fromList $ zip <*> map loadSprite $ allSpriteStates
   where
-    loadSprite :: SpriteState -> (SpriteState, S.Sprite)
-    loadSprite state@(SpriteState hFacing vFacing motion stride) =
+    loadSprite :: SpriteState -> S.Sprite
+    loadSprite (SpriteState hFacing vFacing motion stride) =
         let dims = (Tile 1, Tile 1)
             y = if hFacing == HorizLeft
                 then Tile 0
                 else Tile 1
-            x = if vFacing == VerticalDown
-                then Tile 6
-                else case motion of
-                    Walking -> case stride of
-                        WA.StrideMiddle -> Tile 0
-                        WA.StrideLeft -> Tile 1
-                        WA.StrideRight -> Tile 2
-                    Standing -> Tile 0
-                    Interacting -> Tile 7
-                    Jumping -> Tile 1
-                    Falling -> Tile 2
-            xOff = if vFacing == VerticalUp
-                   then Tile 3
-                   else Tile 0
-            x' = xOff |+| x
-        in (state, S.makeSprite gq (x', y) dims tex)
+            x0 = if vFacing == VerticalDown
+                 then Tile 6
+                 else case motion of
+                     Walking -> case stride of
+                         WA.StrideMiddle -> Tile 0
+                         WA.StrideLeft -> Tile 1
+                         WA.StrideRight -> Tile 2
+                     Standing -> Tile 0
+                     Interacting -> Tile 7
+                     Jumping -> Tile 1
+                     Falling -> Tile 2
+            xOffset = if vFacing == VerticalUp
+                      then Tile 3
+                      else Tile 0
+            x = xOffset |+| x0
+        in S.makeSprite graphicsQuality (x, y) dims texture
 
 initialize :: Position -> GraphicsState Player
 initialize pos = do
-    tex <- loadImage "MyChar"
-    gq <- use quality
-    let sprtMp = spriteMap tex gq
+    texture <- loadImage "MyChar"
+    graphicsQuality <- use quality
+    let sprtMp = spriteMap texture graphicsQuality
     return $ Player
         pos
         (zeroVelocity, zeroVelocity)
@@ -203,36 +203,34 @@ update :: TM.TileMap -> Time -> PlayerState ()
 update tm t = do
     walkingAnimation %= (WA.update t)
 
-    accDir <- use accelDir
-    jumpAct <- use jumpActive
-    vy <- use $ velocity._2
-    let yAccel
-            | jumpAct && sign vy == (-1) = jumpGravity
-            | otherwise = A.gravity
+    do  -- Update Y
+        jumpAct <- use jumpActive
+        vy <- use $ velocity._2
+        let yAccel
+                | jumpAct && sign vy == (-1) = jumpGravity
+                | otherwise = A.gravity
 
-        updateY = do
-            pos <- use position
-            pos' <- MC.update MC.AxisY collisionRectangle pos tm yAccel vy t
-            position.=pos'
+        pos <- use position
+        pos' <- MC.update MC.AxisY collisionRectangle pos tm yAccel vy t
+        position.=pos'
 
-    updateY
-    ground <- use onGround
-    let xAccel
-            | accDir == AccelLeft = if ground
-                                    then walkLeftAccel
-                                    else airLeftAccel
-            | accDir == AccelRight = if ground
-                                     then walkRightAccel
-                                     else airRightAccel
-            | otherwise = if ground
-                          then walkFrictionAccel
-                          else A.zero
-        updateX = do
-            vx <- use $ velocity._1
-            pos <- use position
-            pos' <- MC.update MC.AxisX collisionRectangle pos tm xAccel vx t
-            position.=pos'
-    updateX
+    do  -- Update X
+        grounded <- use onGround
+        accDir <- use accelDir
+        let xAccel
+                | accDir == AccelLeft = if grounded
+                                        then walkLeftAccel
+                                        else airLeftAccel
+                | accDir == AccelRight = if grounded
+                                         then walkRightAccel
+                                         else airRightAccel
+                | otherwise = if grounded
+                              then walkFrictionAccel
+                              else A.zero
+        vx <- use $ velocity._1
+        pos <- use position
+        pos' <- MC.update MC.AxisX collisionRectangle pos tm xAccel vx t
+        position.=pos'
 
 draw :: Player -> GraphicsState ()
 draw p = S.draw (spriteLookup p) (p^.position)
@@ -295,8 +293,8 @@ startJump = (jumpActive.~True) .
             (interacting.~False) .
             setVelocity
   where
+    newVelocity p
+        | p^.onGround = neg jumpSpeed
+        | otherwise   = p^.velocity._2
     setVelocity :: Player -> Player
-    setVelocity p = velocity._2 .~
-        (if p^.onGround
-         then neg jumpSpeed
-         else p^.velocity._2) $ p
+    setVelocity p = velocity._2 .~ (newVelocity p) $ p

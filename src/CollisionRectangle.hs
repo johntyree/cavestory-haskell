@@ -2,7 +2,6 @@
 module CollisionRectangle ( CollisionRectangle(..)
                           , CompositeCollisionRectangle(..)
                           , Side(..)
-                          {-, Orientation(..)-}
                           ) where
 
 import Control.Lens ( makeLenses
@@ -14,7 +13,6 @@ import Units ( Position
              , Length(..)
              )
 
-{-data Orientation = OrientVertical | OrientHorizontal-}
 data Side = LeftSide | RightSide | TopSide | BottomSide
     deriving Eq
 
@@ -36,26 +34,30 @@ instance CollisionRectangle CompositeCollisionRectangle where
                              R.height (cr^.top) |+| R.height (cr^.bottom))
 
     collision cr LeftSide (x, y) d =
-        R.Rectangle
-            (x |+| (R.left $ cr^.left) |+| d,
-             y |+| (R.top $ cr^.left))
-            ((R.width $ cr^.left) |-| d,
-             R.height $ cr^.left)
+        let rect = cr^.left
+        in  R.Rectangle
+                (x |+| R.left rect |+| d,
+                 y |+| R.top rect)
+                (R.width rect |-| d,
+                 R.height rect)
     collision cr RightSide (x, y) d =
-        R.Rectangle
-            (x |+| (R.left $ cr^.right),
-             y |+| (R.top $ cr^.right))
-            ((R.width $ cr^.right) |+| d,
-             R.height $ cr^.right)
+        let rect = cr^.right
+        in  R.Rectangle
+                (x |+| R.left rect,
+                 y |+| R.top rect)
+                (R.width rect |+| d,
+                 R.height rect)
     collision cr TopSide (x, y) d =
-        R.Rectangle
-            (x |+| (R.left $ cr^.top),
-             y |+| (R.top $ cr^.top) |+| d)
-            (R.width $ cr^.top,
-             (R.height $ cr^.top) |-| d)
+        let rect = cr^.top
+        in  R.Rectangle
+                (x |+| R.left rect,
+                 y |+| R.top rect |+| d)
+                (R.width rect,
+                 R.height rect |-| d)
     collision cr BottomSide (x, y) d =
-        R.Rectangle
-            (x |+| (R.left $ cr^.bottom),
-             y |+| (R.top $ cr^.bottom))
-            ((R.width $ cr^.bottom) |+| d,
-             R.height $ cr^.bottom)
+        let rect = cr^.bottom
+        in  R.Rectangle
+                (x |+| R.left rect,
+                 y |+| R.top rect)
+                (R.width rect,
+                 R.height rect |+| d)

@@ -3,9 +3,6 @@ module MapCollisions ( update
                      , Axis(..)
                      ) where
 
-import Debug.Trace
-import Control.Monad ( when )
-
 import Accelerators ( Accelerator )
 import qualified CollisionRectangle as C
 import Control.Monad.State ( State
@@ -28,59 +25,78 @@ class MapCollidable a where
     setVelocity :: Velocity -> Axis -> a -> a
 
 getCollisionPos :: TM.TileMap -> R.Rectangle -> Maybe Position
-getCollisionPos tm r =
-    let ct = filter (\(TM.CollisionTile pos tt) -> tt == TM.WallTile) $ TM.getCollidingTiles r tm
-    in fmap (\(TM.CollisionTile pos _) -> pos) $ listToMaybe ct
+getCollisionPos tileMap r =
+    let ct = filter (\(TM.CollisionTile _ tt) -> tt == TM.WallTile) $
+                    TM.getCollidingTiles r tileMap
+    in fmap (\(TM.CollisionTile pos _) -> pos) $
+            listToMaybe ct
 
 data Axis = AxisX | AxisY
     deriving Eq
 
-flush :: (C.CollisionRectangle c) => C.Side -> Position -> c -> Position -> Position
-flush C.LeftSide (xf, _) crect (_, yf) = (xf |+| (Tile 1) |-| (R.left $ C.bounds crect), yf)
-flush C.RightSide (xf, _) crect (_, yf) = (xf |-| (R.right $ C.bounds crect), yf)
-flush C.TopSide (_, yf) crect (xf, _) = (xf, yf |+| (Tile 1) |-| (R.top $ C.bounds crect))
-flush C.BottomSide (_, yf) crect (xf, _) = (xf, yf |-| (R.bottom $ C.bounds crect))
+flush :: (C.CollisionRectangle cr) =>
+    C.Side -> Position -> cr -> Position -> Position
+flush C.LeftSide (flushX, _) collisionRect (_, origY) =
+    (flushX |+| Tile 1 |-| R.left (C.bounds collisionRect),
+     origY)
+flush C.RightSide (flushX, _) collisionRect (_, origY) =
+    (flushX |-| R.right (C.bounds collisionRect),
+     origY)
+flush C.TopSide (_, flushY) collisionRect (origX, _) =
+    (origX,
+     flushY |+| Tile 1 |-| R.top (C.bounds collisionRect))
+flush C.BottomSide (_, flushY) collisionRect (origX, _) =
+    (origX,
+     flushY |-| R.bottom (C.bounds collisionRect))
 
 deltaSide :: Axis -> Length -> C.Side
-deltaSide axis dx
-    | sign dx == 1 = if axis == AxisX
-                     then C.RightSide
-                     else C.BottomSide
+deltaSide axis delta
+    | sign delta == 1 = if axis == AxisX
+                        then C.RightSide
+                        else C.BottomSide
     | otherwise = if axis == AxisX
                   then C.LeftSide
                   else C.TopSide
 
 oppSide :: C.Side -> C.Side
-oppSide C.RightSide = C.LeftSide
-oppSide C.LeftSide = C.RightSide
-oppSide C.TopSide = C.BottomSide
+oppSide C.RightSide  = C.LeftSide
+oppSide C.LeftSide   = C.RightSide
+oppSide C.TopSide    = C.BottomSide
 oppSide C.BottomSide = C.TopSide
 
 applyDelta :: Axis -> Length -> Position -> Position
 applyDelta AxisX dx (x, y) = (x |+| dx, y)
-applyDelta _ dy (x, y) = (x, y |+| dy)
+applyDelta _     dy (x, y) = (x, y |+| dy)
 
-update :: (MapCollidable m, C.CollisionRectangle c) =>
-    Axis -> c -> Position -> TM.TileMap -> Accelerator -> Velocity -> Time -> State m Position
-update axis crect pos@(x0, y0) tm acc vxb t = do
-    let vx = acc vxb t
-        dx = vx |*| t
-        dSide = deltaSide axis dx
-        oSide = oppSide dSide
-        rect = C.collision crect dSide pos dx
+update :: (MapCollidable mc, C.CollisionRectangle cr) =>
+    Axis ->
+    cr ->
+    Position ->
+    TM.TileMap ->
+    Accelerator ->
+    Velocity ->
+    Time ->
+    State mc Position
+update axis collisionRect pos tileMap acc vx0 t = do
+    let vx = acc vx0 t
+        delta = vx |*| t
+        dSide = deltaSide axis delta
 
     modify $ setVelocity vx axis
-    newPos <- case getCollisionPos tm rect of
-        Just ps -> do
-            modify $ onCollision dSide True
-            return $ flush dSide ps crect pos
-        Nothing -> do
-            modify $ onDelta dSide
-            return $ applyDelta axis dx pos
+    newPos <- do
+        let rect = C.collision collisionRect dSide pos delta
+        case getCollisionPos tileMap rect of
+            Just ps -> do
+                modify $ onCollision dSide True
+                return $ flush dSide ps collisionRect pos
+            Nothing -> do
+                modify $ onDelta dSide
+                return $ applyDelta axis delta pos
 
-    let rect' = C.collision crect oSide newPos (Game 0)
-    case getCollisionPos tm rect' of
+    let rect = C.collision collisionRect oSide newPos (Game 0)
+        oSide = oppSide dSide
+    case getCollisionPos tileMap rect of
         Just ps -> do
             modify $ onCollision oSide False
-            return $ flush oSide ps crect pos
+            return $ flush oSide ps collisionRect pos
         _ -> return newPos

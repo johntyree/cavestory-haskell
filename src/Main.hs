@@ -60,20 +60,22 @@ initialize graphics = do
 eventLoop :: GS.GameStateT ()
 eventLoop = do
     startFrame <- fmap MS $ liftIO SDL.getTicks
-    GS.input %= beginNewFrame
+    do  GS.input %= beginNewFrame
+        input <- use GS.input
+        input' <- liftIO $ with emptyEvent $ pollEvents $ input
+        GS.input .= input'
+        handleInput
+    do  lastUpdate <- use GS.lastUpdate
+        do  beforeUpdate <- fmap MS $ liftIO SDL.getTicks
+            update $ beforeUpdate |-| lastUpdate
+        afterUpdate <- fmap MS $ liftIO SDL.getTicks
+        GS.lastUpdate .= afterUpdate
+
+        draw
+    do  endFrame <- fmap MS $ liftIO SDL.getTicks
+        liftIO $ delay $ endFrame |-| startFrame
     input <- use GS.input
-    input' <- liftIO $ with emptyEvent $ pollEvents $ input
-    GS.input .= input'
-    handleInput
-    lastUpdate <- use GS.lastUpdate
-    beforeUpdate <- fmap MS $ liftIO SDL.getTicks
-    update $ beforeUpdate |-| lastUpdate
-    afterUpdate <- fmap MS $ liftIO SDL.getTicks
-    GS.lastUpdate .= afterUpdate
-    draw
-    endFrame <- fmap MS $ liftIO SDL.getTicks
-    liftIO $ delay $ endFrame |-| startFrame
-    when (continue input') eventLoop
+    when (continue input) eventLoop
   where
     delay :: Time -> IO ()
     delay t
@@ -109,26 +111,21 @@ eventLoop = do
             upKey = SDL.scancodeUp
             downKey = SDL.scancodeDown
             jumpKey = SDL.scancodeZ
+            counterBalanceInput i a aact b bact cact
+                | (isKeyHeld i a) && (isKeyHeld i b) = GS.player %= cact
+                | isKeyHeld i a = GS.player %= aact
+                | isKeyHeld i b = GS.player %= bact
+                | otherwise = GS.player %= cact
         in do
             i <- use GS.input
-            case () of
-             () | (isKeyHeld i leftKey) && (isKeyHeld i rightKey) ->
-                    GS.player %= Player.stopMoving
-                | isKeyHeld i leftKey -> GS.player %= Player.startMovingLeft
-                | isKeyHeld i rightKey ->
-                    GS.player %= Player.startMovingRight
-                | otherwise -> GS.player %= Player.stopMoving
-            case () of
-             () | (isKeyHeld i upKey) && (isKeyHeld i downKey) ->
-                    GS.player %= Player.lookHorizontal
-                | isKeyHeld i upKey -> GS.player %= Player.lookUp
-                | isKeyHeld i downKey ->
-                    GS.player %= Player.lookDown
-                | otherwise -> GS.player %= Player.lookHorizontal
-            case () of
-             () | wasKeyPressed i jumpKey -> GS.player %= Player.startJump
-                | wasKeyReleased i jumpKey -> GS.player %= Player.stopJump
-                | otherwise -> return ()
+            counterBalanceInput i leftKey Player.startMovingLeft
+                                  rightKey Player.startMovingRight
+                                  Player.stopMoving
+            counterBalanceInput i upKey Player.lookUp
+                                  downKey Player.lookDown
+                                  Player.lookHorizontal
+            when (wasKeyPressed i jumpKey) $ GS.player %= Player.startJump
+            when (wasKeyReleased i jumpKey) $ GS.player %= Player.stopJump
 
     update :: Time -> GS.GameStateT ()
     update t = do
