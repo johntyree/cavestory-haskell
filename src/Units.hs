@@ -114,7 +114,7 @@ tileSize :: GameUnit
 tileSize = 32.0
 
 asTile :: Length -> TileUnit
-asTile (Game g) = round $ g / tileSize
+asTile (Game g) = truncate $ g / tileSize
 asTile (Tile t) = t
 
 asGame :: Length -> GameUnit

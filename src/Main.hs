@@ -131,14 +131,16 @@ eventLoop = do
                 | otherwise -> return ()
 
     update :: Time -> GS.GameStateT ()
-    update t = GS.player %= (execState (Player.update t))
+    update t = do
+        tm <- use GS.tileMap
+        GS.player %= (execState (Player.update tm t))
 
     draw :: GS.GameStateT ()
     draw =
         let drawCommands :: GS.GameState -> [ GraphicsState () ]
             drawCommands gs = [ clear
-                              , TileMap.draw (gs^.GS.tileMap)
                               , Player.draw (gs^.GS.player)
+                              , TileMap.draw (gs^.GS.tileMap)
                               , flipBuffer
                               ]
         in  do

@@ -16,6 +16,7 @@ import Units ( Position
 
 {-data Orientation = OrientVertical | OrientHorizontal-}
 data Side = LeftSide | RightSide | TopSide | BottomSide
+    deriving Eq
 
 class CollisionRectangle a where
     bounds :: a -> R.Rectangle
@@ -55,6 +56,6 @@ instance CollisionRectangle CompositeCollisionRectangle where
     collision cr BottomSide (x, y) d =
         R.Rectangle
             (x |+| (R.left $ cr^.bottom),
-             y |+| (R.bottom $ cr^.bottom))
+             y |+| (R.top $ cr^.bottom))
             ((R.width $ cr^.bottom) |+| d,
              R.height $ cr^.bottom)

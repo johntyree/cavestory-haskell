@@ -14,6 +14,7 @@ import Units ( Position
              )
 
 data Rectangle = Rectangle Position Dimension
+    deriving Show
 
 left :: Rectangle -> Length
 left (Rectangle (x, _) _) = x

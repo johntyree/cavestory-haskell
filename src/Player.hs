@@ -35,12 +35,13 @@ import qualified Data.Map as Map
 import qualified MapCollisions as MC
 import Data.Maybe ( fromMaybe )
 import qualified Graphics.UI.SDL as SDL
+import qualified Rectangle as R
 import SDL.Graphics ( GraphicsState
                     , loadImage
                     , quality
                     )
-import qualified Rectangle as R
 import qualified Sprite as S
+import qualified TileMap as TM
 import Units ( Position
              , Velocity
              , zeroVelocity
@@ -84,6 +85,25 @@ data Player = Player { _position :: !Position
                      , _onGround :: !Bool
                      }
 makeLenses ''Player
+
+instance MC.MapCollidable Player where
+    onCollision C.BottomSide True =
+        (velocity._2.~zeroVelocity) .
+        (onGround.~True)
+    onCollision C.BottomSide _ =
+        (onGround.~True)
+    onCollision C.TopSide True =
+        (velocity._2.~zeroVelocity)
+    onCollision _ _ = id
+
+    onDelta C.BottomSide =
+        (onGround.~False)
+    onDelta C.TopSide =
+        (onGround.~False)
+    onDelta _ = id
+
+    setVelocity v MC.AxisX = velocity._1.~v
+    setVelocity v MC.AxisY = velocity._2.~v
 
 collisionRectangle :: C.CompositeCollisionRectangle
 collisionRectangle =
@@ -177,8 +197,8 @@ initialize pos = do
         False
         False
 
-update :: Time -> PlayerState ()
-update t = do
+update :: TM.TileMap -> Time -> PlayerState ()
+update tm t = do
     walkingAnimation %= (WA.update t)
 
     accDir <- use accelDir
@@ -188,16 +208,12 @@ update t = do
             | jumpAct && sign vy == (-1) = jumpGravity
             | otherwise = A.gravity
 
-    velocity._2 %= (flip yAccel t)
-    vy' <- use $ velocity._2
-    position._2 %= (vy' |*| t |+|)
-    py <- use $ position._2
-    when (py >= Game 400) $ do
-        onGround.=True
-        position._2 .= Game 400
-    when (py < Game 400) $
-        onGround.=False
+        updateY = do
+            pos <- use position
+            pos' <- MC.update MC.AxisY collisionRectangle pos tm yAccel vy t
+            position.=pos'
 
+    updateY
     ground <- use onGround
     let xAccel
             | accDir == AccelLeft = if ground
@@ -209,9 +225,12 @@ update t = do
             | otherwise = if ground
                           then walkFrictionAccel
                           else A.zero
-    velocity._1 %= (flip xAccel t)
-    vx <- use $ velocity._1
-    position._1 %= (vx |*| t |+|)
+        updateX = do
+            vx <- use $ velocity._1
+            pos <- use position
+            pos' <- MC.update MC.AxisX collisionRectangle pos tm xAccel vx t
+            position.=pos'
+    updateX
 
 draw :: Player -> GraphicsState ()
 draw p = S.draw (spriteLookup p) (p^.position)
