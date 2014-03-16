@@ -43,7 +43,9 @@ makeTestMap = do
         wallT = Tile WallTile (Just sprt)
         tGrid = fromListWithDefault (Tile AirTile Nothing)
                                     (U.Tile 20, U.Tile 15)
-                                    [((U.Tile x, U.Tile 11), wallT) | x <- [0..20]]
+                                    ([((U.Tile x, U.Tile (16 - x)), wallT) | x <- [6..8]] ++
+                                     [((U.Tile x, U.Tile x), wallT) | x <- [7..10]] ++
+                                     [((U.Tile x, U.Tile 11), wallT) | x <- [0..20]])
         bgGrid = Seq.empty
     return $ TileMap tGrid bgGrid
 

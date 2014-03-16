@@ -94,6 +94,8 @@ instance MC.MapCollidable Player where
         (onGround.~True)
     onCollision C.TopSide True =
         (velocity._2.~zeroVelocity)
+    onCollision _ True =
+        (velocity._1.~zeroVelocity)
     onCollision _ _ = id
 
     onDelta C.BottomSide =
