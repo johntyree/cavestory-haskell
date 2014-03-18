@@ -5,6 +5,7 @@ import Config.Config ( GraphicsQuality(..)
 import Control.Lens ( over
                     , (%=)
                     , (.=)
+                    , assign
                     , both
                     , use
                     , (^.)
@@ -52,30 +53,39 @@ import Units ( Length(..)
 
 initialize :: Graphics -> IO GS.GameState
 initialize graphics = do
-    (player, graphics') <- runStateT (Player.initialize (Tile 10, Tile 2)) graphics
-    (tileMap, graphics'') <- runStateT TileMap.makeTestMap graphics'
+    ((player, tileMap), graphics') <- flip runStateT graphics $ do
+        player <- Player.initialize (Tile 10, Tile 2)
+        tileMap <- TileMap.makeTestMap
+        return (player, tileMap)
     time <- fmap MS SDL.getTicks
-    return $ GS.GameState player tileMap makeInput graphics'' time
+    return $ GS.GameState player tileMap makeInput graphics' time
 
 eventLoop :: GS.GameStateT ()
 eventLoop = do
     startFrame <- fmap MS $ liftIO SDL.getTicks
+    -- Collect Input
     do  GS.input %= beginNewFrame
         input <- use GS.input
         input' <- liftIO $ with emptyEvent $ pollEvents $ input
         GS.input .= input'
         handleInput
+
+    -- Update
     do  lastUpdate <- use GS.lastUpdate
         do  beforeUpdate <- fmap MS $ liftIO SDL.getTicks
             update $ beforeUpdate |-| lastUpdate
-        afterUpdate <- fmap MS $ liftIO SDL.getTicks
-        GS.lastUpdate .= afterUpdate
+        (fmap MS $ liftIO SDL.getTicks) >>= assign GS.lastUpdate
 
-        draw
+    -- Draw
+    draw
+
+    -- V-Sync
     do  endFrame <- fmap MS $ liftIO SDL.getTicks
-        liftIO $ delay $ endFrame |-| startFrame
-    input <- use GS.input
-    when (continue input) eventLoop
+        liftIO $ delay (endFrame |-| startFrame)
+
+    -- Continue loop
+    do  input <- use GS.input
+        when (continue input) eventLoop
   where
     delay :: Time -> IO ()
     delay t
@@ -85,6 +95,7 @@ eventLoop = do
 
     continue :: Input -> Bool
     continue i = not $ wasKeyPressed i SDL.scancodeEscape
+
     emptyEvent = SDL.QuitEvent 0 0
 
     pollEvents :: Input -> Ptr SDL.Event -> IO Input
@@ -111,17 +122,19 @@ eventLoop = do
             upKey = SDL.scancodeUp
             downKey = SDL.scancodeDown
             jumpKey = SDL.scancodeZ
-            counterBalanceInput i a aact b bact cact
+            -- counteractInput: when two inputs (e.g. <-/-> counteract each
+            -- other)
+            counteractInput i a aact b bact cact
                 | (isKeyHeld i a) && (isKeyHeld i b) = GS.player %= cact
                 | isKeyHeld i a = GS.player %= aact
                 | isKeyHeld i b = GS.player %= bact
                 | otherwise = GS.player %= cact
         in do
             i <- use GS.input
-            counterBalanceInput i leftKey Player.startMovingLeft
+            counteractInput i leftKey Player.startMovingLeft
                                   rightKey Player.startMovingRight
                                   Player.stopMoving
-            counterBalanceInput i upKey Player.lookUp
+            counteractInput i upKey Player.lookUp
                                   downKey Player.lookDown
                                   Player.lookHorizontal
             when (wasKeyPressed i jumpKey) $ GS.player %= Player.startJump

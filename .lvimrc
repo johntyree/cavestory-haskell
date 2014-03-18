@@ -1,1 +1,5 @@
 map <leader>g :!make && make run <CR>
+
+autocmd BufWritePost *.hs silent! execute 'make ctags &> /dev/null'
+
+set wildignore+=content/*,dist/*,tags,Setup.hs

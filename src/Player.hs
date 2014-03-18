@@ -23,7 +23,7 @@ import Control.Lens ( makeLenses
                     , (^.)
                     , (.~)
                     , (%=)
-                    , (.=)
+                    , assign
                     , use
                     , _1
                     , _2
@@ -35,12 +35,17 @@ import qualified Data.Map as Map
 import qualified MapCollisions as MC
 import Data.Maybe ( fromMaybe )
 import qualified Graphics.UI.SDL as SDL
+import qualified PolarStar as PS
 import qualified Rectangle as R
 import SDL.Graphics ( GraphicsState
                     , loadImage
                     , quality
                     )
 import qualified Sprite as S
+import SpriteState
+    ( HorizontalFacing(..)
+    , VerticalFacing(..)
+    )
 import qualified TileMap as TM
 import Units ( Position
              , Velocity
@@ -58,10 +63,6 @@ type PlayerState = State Player
 data AccelDir = AccelLeft | AccelRight | AccelNone
     deriving (Show, Eq)
 
-data HorizontalFacing = HorizLeft | HorizRight
-    deriving (Eq, Enum, Bounded, Ord)
-data VerticalFacing = VerticalNone | VerticalUp | VerticalDown
-    deriving (Eq, Enum, Bounded, Ord)
 data MotionType = Standing | Interacting | Walking | Jumping | Falling
     deriving (Eq, Enum, Bounded, Ord)
 
@@ -78,6 +79,7 @@ data Player = Player { _position :: !Position
                      , _intendedVertFacing :: !VerticalFacing
 
                      , _walkingAnimation :: !WA.WalkingAnimation
+                     , _polarStar :: !PS.PolarStar
 
                      , _jumpActive :: !Bool
                      , _interacting :: !Bool
@@ -118,8 +120,7 @@ jumpSpeed :: Velocity
 jumpSpeed = fromGamePerMS 0.25
 
 jumpGravity :: A.Accelerator
-jumpGravity = A.constant (fromGamePerMSMS 0.0003125)
-                         (fromGamePerMS 0.2998046875)
+jumpGravity = A.constant (fromGamePerMSMS 0.0003125) A.terminalSpeed
 
 airAccelerationX :: Acceleration
 airAccelerationX = fromGamePerMSMS 0.0003125
@@ -162,30 +163,26 @@ spriteMap texture graphicsQuality =
     loadSprite :: SpriteState -> S.Sprite
     loadSprite (SpriteState hFacing vFacing motion stride) =
         let dims = (Tile 1, Tile 1)
-            y = if hFacing == HorizLeft
-                then Tile 0
-                else Tile 1
-            x0 = if vFacing == VerticalDown
-                 then Tile 6
-                 else case motion of
-                     Walking -> case stride of
-                         WA.StrideMiddle -> Tile 0
-                         WA.StrideLeft -> Tile 1
-                         WA.StrideRight -> Tile 2
-                     Standing -> Tile 0
-                     Interacting -> Tile 7
-                     Jumping -> Tile 1
-                     Falling -> Tile 2
-            xOffset = if vFacing == VerticalUp
-                      then Tile 3
-                      else Tile 0
-            x = xOffset |+| x0
-        in S.makeSprite graphicsQuality (x, y) dims texture
+            y HorizLeft = Tile 0
+            y _         = Tile 1
+            x0 VerticalDown _       _               = Tile 6
+            x0 _            Walking WA.StrideMiddle = Tile 0
+            x0 _            Walking WA.StrideLeft   = Tile 1
+            x0 _            Walking WA.StrideRight  = Tile 2
+            x0 _            Standing    _           = Tile 0
+            x0 _            Interacting _           = Tile 7
+            x0 _            Jumping     _           = Tile 1
+            x0 _            Falling     _           = Tile 2
+            xOffset VerticalUp = Tile 3
+            xOffset _          = Tile 0
+            x = (xOffset vFacing) |+| (x0 vFacing motion stride)
+        in S.makeSprite graphicsQuality (x, y hFacing) dims texture
 
 initialize :: Position -> GraphicsState Player
 initialize pos = do
     texture <- loadImage "MyChar"
     graphicsQuality <- use quality
+    ps <- PS.initialize
     let sprtMp = spriteMap texture graphicsQuality
     return $ Player
         pos
@@ -195,6 +192,7 @@ initialize pos = do
         (HorizLeft)
         (VerticalNone)
         WA.makeWalkingAnimation
+        ps
         False
         False
         False
@@ -202,7 +200,6 @@ initialize pos = do
 update :: TM.TileMap -> Time -> PlayerState ()
 update tm t = do
     walkingAnimation %= (WA.update t)
-
     do  -- Update Y
         jumpAct <- use jumpActive
         vy <- use $ velocity._2
@@ -211,30 +208,47 @@ update tm t = do
                 | otherwise = A.gravity
 
         pos <- use position
-        pos' <- MC.update MC.AxisY collisionRectangle pos tm yAccel vy t
-        position.=pos'
+        (MC.update MC.AxisY collisionRectangle pos tm yAccel vy t) >>=
+            assign position
 
     do  -- Update X
-        grounded <- use onGround
+        let xAccel' AccelLeft  True  = walkLeftAccel
+            xAccel' AccelLeft  False = airLeftAccel
+            xAccel' AccelRight True  = walkRightAccel
+            xAccel' AccelRight False = airRightAccel
+            xAccel' _          True  = walkFrictionAccel
+            xAccel' _          False = A.zero
+
         accDir <- use accelDir
-        let xAccel
-                | accDir == AccelLeft = if grounded
-                                        then walkLeftAccel
-                                        else airLeftAccel
-                | accDir == AccelRight = if grounded
-                                         then walkRightAccel
-                                         else airRightAccel
-                | otherwise = if grounded
-                              then walkFrictionAccel
-                              else A.zero
+        grounded <- use onGround
+        let xAccel = xAccel' accDir grounded
         vx <- use $ velocity._1
         pos <- use position
-        pos' <- MC.update MC.AxisX collisionRectangle pos tm xAccel vx t
-        position.=pos'
+        (MC.update MC.AxisX collisionRectangle pos tm xAccel vx t) >>=
+            assign position
 
 draw :: Player -> GraphicsState ()
-draw p = S.draw (spriteLookup p) (p^.position)
+draw p = do
+    PS.draw (p^.polarStar) (p^.horizFacing) (verticalFacing p) gunUp (p^.position)
+    S.draw (spriteLookup p) (p^.position)
+  where
+    gunUp = (motionType p) == Walking && (WA.stride (p^.walkingAnimation)) /= WA.StrideMiddle
 
+verticalFacing :: Player -> VerticalFacing
+verticalFacing p = vFacing' (p^.onGround) (p^.intendedVertFacing)
+  where
+    vFacing' True VerticalDown = VerticalNone
+    vFacing' _    intended     = intended
+
+motionType :: Player -> MotionType
+motionType p = motion' (p^.interacting) (p^.onGround) (p^.accelDir)
+  where
+    motion' True _    _         = Interacting
+    motion' _    True AccelNone = Standing
+    motion' _    True _         = Walking
+    motion' _ _ _
+        | sign (p^.velocity._2) == 1 = Jumping
+        | otherwise                  = Falling
 spriteLookup :: Player -> S.Sprite
 spriteLookup p = fromMaybe
     (error "Bad spriteLookup. Check initialization")
@@ -242,17 +256,8 @@ spriteLookup p = fromMaybe
   where
     state =
         let hFacing = p^.horizFacing
-            vFacing = if p^.onGround && p^.intendedVertFacing == VerticalDown
-                      then VerticalNone
-                      else p^.intendedVertFacing
-            motion
-                | p^.interacting = Interacting
-                | p^.onGround = if p^.accelDir == AccelNone
-                                then Standing
-                                else Walking
-                | otherwise = if sign (p^.velocity._2) == 1
-                              then Jumping
-                              else Falling
+            vFacing = verticalFacing p
+            motion = motionType p
             stride = WA.stride $ p^.walkingAnimation
         in  SpriteState hFacing vFacing motion stride
 
@@ -267,19 +272,19 @@ startMovingRight = (accelDir.~AccelRight) .
                    (interacting.~False)
 
 stopMoving :: Player -> Player
-stopMoving = (accelDir.~AccelNone)
+stopMoving = accelDir.~AccelNone
 
 lookUp :: Player -> Player
 lookUp = (interacting.~False) .
          (intendedVertFacing.~VerticalUp)
 
 lookDown :: Player -> Player
-lookDown p =
-    if p^.intendedVertFacing /= VerticalDown
-    then (interacting.~grounded) .
-         (intendedVertFacing.~VerticalDown) $ p
-    else p
+lookDown p = lookDown' $ p^.intendedVertFacing
   where
+    lookDown' VerticalDown = p
+    lookDown' _            =
+        (interacting.~grounded) .
+        (intendedVertFacing.~VerticalDown) $ p
     grounded = p^.onGround
 
 lookHorizontal :: Player -> Player
@@ -296,5 +301,4 @@ startJump = (jumpActive.~True) .
     newVelocity p
         | p^.onGround = neg jumpSpeed
         | otherwise   = p^.velocity._2
-    setVelocity :: Player -> Player
     setVelocity p = velocity._2 .~ (newVelocity p) $ p

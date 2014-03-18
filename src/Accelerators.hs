@@ -2,6 +2,7 @@ module Accelerators ( zero
                     , friction
                     , constant
                     , gravity
+                    , terminalSpeed
                     , Accelerator
                     ) where
 
@@ -31,5 +32,8 @@ constant a terminalV v t
     | sign a == 1 = min (v |+| a |*| t) terminalV
     | otherwise = max (v |+| a |*| t) terminalV
 
+terminalSpeed :: Velocity
+terminalSpeed = fromGamePerMS 0.2998046875
+
 gravity :: Accelerator
-gravity = constant (fromGamePerMSMS 0.00078125) (fromGamePerMS 0.2998046875)
+gravity = constant (fromGamePerMSMS 0.00078125) terminalSpeed

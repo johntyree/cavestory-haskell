@@ -3,3 +3,4 @@ dist/
 content
 .cabal-sandbox/
 cabal.sandbox.config
+tags

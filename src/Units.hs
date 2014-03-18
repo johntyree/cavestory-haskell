@@ -18,10 +18,15 @@ module Units ( Length(..)
              , Frame
              , FrameRate(..)
              , asTimePerFrame
+             , GunExperience
+             , GunLevel
              ) where
 
 import Config.Config ( GraphicsQuality(..) )
 import Data.Word ( Word32 )
+
+type GunExperience = Word32
+type GunLevel      = Word32
 
 type Frame = Word32
 data FrameRate = FrameRate !Frame !Time
