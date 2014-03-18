@@ -34,8 +34,7 @@ getCollisionPos tileMap r =
 data Axis = AxisX | AxisY
     deriving Eq
 
-flush :: (C.CollisionRectangle cr) =>
-    C.Side -> Position -> cr -> Position -> Position
+flush :: C.Side -> Position -> C.CollisionRectangle -> Position -> Position
 flush C.LeftSide (flushX, _) collisionRect (_, origY) =
     (flushX |+| Tile 1 |-| R.left (C.bounds collisionRect),
      origY)
@@ -68,9 +67,9 @@ applyDelta :: Axis -> Length -> Position -> Position
 applyDelta AxisX dx (x, y) = (x |+| dx, y)
 applyDelta _     dy (x, y) = (x, y |+| dy)
 
-update :: (MapCollidable mc, C.CollisionRectangle cr) =>
+update :: (MapCollidable mc) =>
     Axis ->
-    cr ->
+    C.CollisionRectangle ->
     Position ->
     TM.TileMap ->
     Accelerator ->

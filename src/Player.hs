@@ -108,13 +108,14 @@ instance MC.MapCollidable Player where
     setVelocity v MC.AxisX = velocity._1.~v
     setVelocity v MC.AxisY = velocity._2.~v
 
-collisionRectangle :: C.CompositeCollisionRectangle
+collisionRectangle :: C.CollisionRectangle
 collisionRectangle =
-    C.CompositeCollisionRectangle
-        (R.Rectangle (Game  6, Game 10) (Game 10, Game 12))
-        (R.Rectangle (Game 16, Game 10) (Game 10, Game 12))
-        (R.Rectangle (Game  7, Game  2) (Game 18, Game 15))
-        (R.Rectangle (Game 11, Game 17) (Game 10, Game 15))
+    C.compositeCollisionRectangle $
+        C.CompositeCollisionRectangle
+            (R.Rectangle (Game  6, Game 10) (Game 10, Game 12))
+            (R.Rectangle (Game 16, Game 10) (Game 10, Game 12))
+            (R.Rectangle (Game  7, Game  2) (Game 18, Game 15))
+            (R.Rectangle (Game 11, Game 17) (Game 10, Game 15))
 
 jumpSpeed :: Velocity
 jumpSpeed = fromGamePerMS 0.25
