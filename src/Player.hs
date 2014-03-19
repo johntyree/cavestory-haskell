@@ -12,6 +12,8 @@ module Player ( Player(..)
               , lookUp
               , lookHorizontal
               , lookDown
+              , startFire
+              , stopFire
               ) where
 import qualified Player.WalkingAnimation as WA
 
@@ -19,15 +21,17 @@ import qualified Accelerators as A
 import qualified CollisionRectangle as C
 import Config.Config ( GraphicsQuality )
 import Control.Applicative ( (<*>) )
-import Control.Lens ( makeLenses
-                    , (^.)
-                    , (.~)
-                    , (%=)
-                    , assign
-                    , use
-                    , _1
-                    , _2
-                    )
+import Control.Lens
+    ( makeLenses
+    , (^.)
+    , (.~)
+    , (%~)
+    , (%=)
+    , assign
+    , use
+    , _1
+    , _2
+    )
 import Control.Lens.At ( at )
 import Control.Monad.State ( State
                            )
@@ -201,6 +205,7 @@ initialize pos = do
 update :: TM.TileMap -> Time -> PlayerState ()
 update tm t = do
     walkingAnimation %= (WA.update t)
+    polarStar %= (PS.updateProjectiles t tm)
     do  -- Update Y
         jumpAct <- use jumpActive
         vy <- use $ velocity._2
@@ -228,12 +233,13 @@ update tm t = do
         (MC.update MC.AxisX collisionRectangle pos tm xAccel vx t) >>=
             assign position
 
+gunUp :: Player -> Bool
+gunUp p = (motionType p) == Walking && (WA.stride (p^.walkingAnimation)) /= WA.StrideMiddle
+
 draw :: Player -> GraphicsState ()
 draw p = do
-    PS.draw (p^.polarStar) (p^.horizFacing) (verticalFacing p) gunUp (p^.position)
+    PS.draw (p^.polarStar) (p^.horizFacing) (verticalFacing p) (gunUp p) (p^.position)
     S.draw (spriteLookup p) (p^.position)
-  where
-    gunUp = (motionType p) == Walking && (WA.stride (p^.walkingAnimation)) /= WA.StrideMiddle
 
 verticalFacing :: Player -> VerticalFacing
 verticalFacing p = vFacing' (p^.onGround) (p^.intendedVertFacing)
@@ -290,6 +296,16 @@ lookDown p = lookDown' $ p^.intendedVertFacing
 
 lookHorizontal :: Player -> Player
 lookHorizontal = intendedVertFacing.~VerticalNone
+
+stopFire :: Player -> Player
+stopFire = id
+
+startFire :: Player -> Player
+startFire p = polarStar %~
+    (PS.startFire (p^.position)
+                  (p^.horizFacing)
+                  (verticalFacing p)
+                  (gunUp p)) $ p
 
 stopJump :: Player -> Player
 stopJump = jumpActive.~False

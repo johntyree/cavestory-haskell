@@ -122,6 +122,7 @@ eventLoop = do
             upKey = SDL.scancodeUp
             downKey = SDL.scancodeDown
             jumpKey = SDL.scancodeZ
+            fireKey = SDL.scancodeX
             -- counteractInput: when two inputs (e.g. <-/-> counteract each
             -- other)
             counteractInput i a aact b bact cact
@@ -139,6 +140,8 @@ eventLoop = do
                                   Player.lookHorizontal
             when (wasKeyPressed i jumpKey) $ GS.player %= Player.startJump
             when (wasKeyReleased i jumpKey) $ GS.player %= Player.stopJump
+            when (wasKeyPressed i fireKey) $ GS.player %= Player.startFire
+            when (wasKeyReleased i fireKey) $ GS.player %= Player.stopFire
 
     update :: Time -> GS.GameStateT ()
     update t = do
